@@ -6,9 +6,50 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { defaultMeal, foodsForDiet, MEALS, QUICK_ADD_IDS, foodById } from "@/lib/data/foods";
 import { SUPPLEMENTS } from "@/lib/data/supplements";
+import {
+  kcalFromMacros,
+  macroPercents,
+  macrosByMeal,
+  mealOf,
+  sumLogs,
+} from "@/lib/nutrition-totals";
 import { selectToday, useAthleteStore } from "@/lib/store";
 import type { MealSlot } from "@/lib/types";
 import { cn, percent } from "@/lib/utils";
+
+function MacroLine({
+  label,
+  current,
+  target,
+  unit,
+  tone,
+}: {
+  label: string;
+  current: number;
+  target: number;
+  unit: string;
+  tone: "accent" | "success" | "warning";
+}) {
+  const left = Math.max(0, target - current);
+  return (
+    <div className="min-w-0">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="text-xs uppercase tracking-[0.14em] text-muted">{label}</div>
+        <div className="text-xs tabular text-muted">
+          {left > 0 ? `${Math.round(left)}${unit} left` : "Hit"}
+        </div>
+      </div>
+      <div className="mt-1 text-2xl font-semibold tabular tracking-tight">
+        {Math.round(current)}
+        <span className="text-sm font-medium text-muted">
+          /{Math.round(target)}
+          {unit}
+        </span>
+      </div>
+      <Progress value={percent(current, target)} tone={tone} className="mt-3" />
+    </div>
+  );
+}
 
 export default function NutritionPage() {
   const state = useAthleteStore();
@@ -16,8 +57,15 @@ export default function NutritionPage() {
   const [meal, setMeal] = useState<MealSlot>("breakfast");
   const foods = foodsForDiet(state.profile?.dietType ?? "eggetarian");
   const target = state.targets;
-  const mealLog = today.nutrition.filter((n) => (n.meal ?? defaultMeal(n.foodId)) === meal);
+  const dayTotals = useMemo(() => sumLogs(today.nutrition), [today.nutrition]);
+  const meals = useMemo(() => macrosByMeal(today.nutrition), [today.nutrition]);
+  const mealLog = today.nutrition.filter((n) => mealOf(n) === meal);
+  const mealTotals = meals[meal];
   const stack = state.protocol?.supplementIds ?? ["vit-d3", "omega3", "mag", "creatine"];
+  const remainingKcal = Math.max(0, (target?.dailyCalories ?? 0) - dayTotals.calories);
+  const over = dayTotals.calories > (target?.dailyCalories ?? 0);
+  const split = macroPercents(dayTotals);
+  const fromMacros = Math.round(kcalFromMacros(dayTotals));
 
   return (
     <div className="space-y-5">
@@ -29,32 +77,93 @@ export default function NutritionPage() {
         )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          [`${Math.round(today.calories)}/${target?.dailyCalories ?? "—"}`, "Calories", percent(today.calories, target?.dailyCalories ?? 1), "accent"],
-          [`${Math.round(today.protein)}/${target?.proteinG ?? "—"}g`, "Protein", percent(today.protein, target?.proteinG ?? 1), "success"],
-          [`${Math.round(today.carbs)}/${target?.carbsG ?? "—"}g`, "Carbs", percent(today.carbs, target?.carbsG ?? 1), "accent"],
-          [`${Math.round(today.fat)}/${target?.fatG ?? "—"}g`, "Fat", percent(today.fat, target?.fatG ?? 1), "warning"],
-        ].map(([label, name, value, tone]) => (
-          <Card key={String(name)}>
-            <div className="text-xs uppercase tracking-[0.16em] text-muted">{name}</div>
-            <div className="mt-2 text-2xl font-semibold tabular tracking-tight">{label}</div>
-            <Progress value={Number(value)} className="mt-4" tone={tone === "success" ? "success" : tone === "warning" ? "warning" : "accent"} />
-          </Card>
-        ))}
-      </div>
+      <Card>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="text-xs uppercase tracking-[0.16em] text-muted">Total calories today</div>
+            <div className="mt-2 text-5xl font-semibold tabular tracking-tight">
+              {Math.round(dayTotals.calories)}
+              <span className="text-xl font-medium text-muted">
+                /{target?.dailyCalories ?? "—"}
+              </span>
+            </div>
+            <p className="mt-2 text-sm text-muted">
+              {over
+                ? `${Math.round(dayTotals.calories - (target?.dailyCalories ?? 0))} kcal over target`
+                : `${Math.round(remainingKcal)} kcal remaining`}
+              {" · "}
+              Macros add to {fromMacros} kcal
+            </p>
+          </div>
+          <div className="text-right text-sm tabular text-muted">
+            <div>P {Math.round(split.protein * 100)}%</div>
+            <div>C {Math.round(split.carbs * 100)}%</div>
+            <div>F {Math.round(split.fat * 100)}%</div>
+          </div>
+        </div>
+        <Progress
+          value={percent(dayTotals.calories, target?.dailyCalories ?? 1)}
+          tone={over ? "warning" : "accent"}
+          className="mt-5"
+        />
+        <div className="mt-6 grid gap-5 sm:grid-cols-3">
+          <MacroLine
+            label="Protein"
+            current={dayTotals.protein}
+            target={target?.proteinG ?? 0}
+            unit="g"
+            tone="success"
+          />
+          <MacroLine
+            label="Carbs"
+            current={dayTotals.carbs}
+            target={target?.carbsG ?? 0}
+            unit="g"
+            tone="accent"
+          />
+          <MacroLine
+            label="Fat"
+            current={dayTotals.fat}
+            target={target?.fatG ?? 0}
+            unit="g"
+            tone="warning"
+          />
+        </div>
+      </Card>
 
-      <div className="flex flex-wrap gap-2">
-        {MEALS.map((slot) => (
-          <Button key={slot} size="sm" variant={meal === slot ? "primary" : "secondary"} onClick={() => setMeal(slot)}>
-            {slot}
-          </Button>
-        ))}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {MEALS.map((slot) => {
+          const totals = meals[slot];
+          const active = meal === slot;
+          return (
+            <button
+              key={slot}
+              onClick={() => setMeal(slot)}
+              className={cn(
+                "rounded-3xl border p-4 text-left transition",
+                active ? "border-accent/40 bg-accent/10" : "border-white/6 bg-card",
+              )}
+            >
+              <div className="text-xs uppercase tracking-[0.14em] text-muted">{slot}</div>
+              <div className="mt-2 text-2xl font-semibold tabular">
+                {Math.round(totals.calories)}
+                <span className="text-sm font-medium text-muted"> kcal</span>
+              </div>
+              <div className="mt-2 text-xs tabular text-muted">
+                {totals.protein.toFixed(0)}P · {totals.carbs.toFixed(0)}C · {totals.fat.toFixed(0)}F
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Quick add · {meal}</CardTitle>
+          <div className="text-xs tabular text-muted">
+            {Math.round(mealTotals.calories)} kcal · {mealTotals.protein.toFixed(0)}P ·{" "}
+            {mealTotals.carbs.toFixed(0)}C · {mealTotals.fat.toFixed(0)}F
+          </div>
         </CardHeader>
         <div className="flex flex-wrap gap-2">
           {QUICK_ADD_IDS.map((id) => {
@@ -62,7 +171,7 @@ export default function NutritionPage() {
             if (!food) return null;
             return (
               <Button key={id} variant="secondary" onClick={() => state.addFood(id, 1, meal)}>
-                + {food.name} · {food.protein}g
+                + {food.name} · {food.calories} kcal · {food.protein}P
               </Button>
             );
           })}
@@ -85,8 +194,10 @@ export default function NutritionPage() {
                 </div>
               </div>
               <div className="shrink-0 text-right text-sm tabular">
-                {food.protein}g P
-                <div className="text-muted">{food.calories} kcal</div>
+                <div>{food.calories} kcal</div>
+                <div className="text-xs text-muted">
+                  {food.protein}P · {food.carbs}C · {food.fat}F
+                </div>
               </div>
             </button>
           ))}
@@ -94,7 +205,12 @@ export default function NutritionPage() {
       </Card>
 
       <Card>
-        <CardTitle className="mb-4">Today · {meal}</CardTitle>
+        <CardHeader>
+          <CardTitle>Today · {meal}</CardTitle>
+          <div className="text-sm tabular text-muted">
+            {Math.round(mealTotals.calories)} kcal total
+          </div>
+        </CardHeader>
         <div className="space-y-2">
           {mealLog.map((item) => (
             <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl bg-white/3 px-4 py-3">
@@ -102,8 +218,9 @@ export default function NutritionPage() {
                 <div className="truncate font-medium">
                   {item.name} × {item.servings}
                 </div>
-                <div className="text-xs text-muted">
-                  {Math.round(item.calories)} kcal · {item.protein.toFixed(1)}g P · {item.carbs.toFixed(1)}g C · {item.fat.toFixed(1)}g F
+                <div className="text-xs tabular text-muted">
+                  {Math.round(item.calories)} kcal · {item.protein.toFixed(1)}g P · {item.carbs.toFixed(1)}g C ·{" "}
+                  {item.fat.toFixed(1)}g F
                 </div>
               </div>
               <Button variant="ghost" size="sm" onClick={() => state.removeFood(item.id)}>
@@ -113,6 +230,55 @@ export default function NutritionPage() {
           ))}
           {mealLog.length === 0 && <p className="text-sm text-muted">Nothing logged in this meal yet.</p>}
         </div>
+        {mealLog.length > 0 && (
+          <div className="mt-4 rounded-2xl border border-white/6 px-4 py-3 text-sm tabular">
+            Meal total · {Math.round(mealTotals.calories)} kcal · {mealTotals.protein.toFixed(1)}g P ·{" "}
+            {mealTotals.carbs.toFixed(1)}g C · {mealTotals.fat.toFixed(1)}g F
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <CardTitle className="mb-4">Day total</CardTitle>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[520px] text-left text-sm tabular">
+            <thead className="text-xs uppercase tracking-[0.14em] text-muted">
+              <tr>
+                <th className="pb-2 font-medium">Meal</th>
+                <th className="pb-2 font-medium">Calories</th>
+                <th className="pb-2 font-medium">Protein</th>
+                <th className="pb-2 font-medium">Carbs</th>
+                <th className="pb-2 font-medium">Fat</th>
+              </tr>
+            </thead>
+            <tbody>
+              {MEALS.map((slot) => (
+                <tr key={slot} className="border-t border-white/6">
+                  <td className="py-2 capitalize">{slot}</td>
+                  <td>{Math.round(meals[slot].calories)}</td>
+                  <td>{meals[slot].protein.toFixed(1)}g</td>
+                  <td>{meals[slot].carbs.toFixed(1)}g</td>
+                  <td>{meals[slot].fat.toFixed(1)}g</td>
+                </tr>
+              ))}
+              <tr className="border-t border-white/10 font-semibold">
+                <td className="py-3">Total</td>
+                <td>
+                  {Math.round(dayTotals.calories)} / {target?.dailyCalories ?? "—"}
+                </td>
+                <td>
+                  {dayTotals.protein.toFixed(1)} / {target?.proteinG ?? "—"}g
+                </td>
+                <td>
+                  {dayTotals.carbs.toFixed(1)} / {target?.carbsG ?? "—"}g
+                </td>
+                <td>
+                  {dayTotals.fat.toFixed(1)} / {target?.fatG ?? "—"}g
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       <Card id="supplements">
@@ -121,7 +287,7 @@ export default function NutritionPage() {
           Default stack if no labs. Iron only appears when a report says ferritin or hemoglobin is low.
         </p>
         <div className="space-y-2">
-          {SUPPLEMENTS.filter((s) => stack.includes(s.id) || s.id !== "iron").filter((s) => stack.includes(s.id)).map((item) => {
+          {SUPPLEMENTS.filter((s) => stack.includes(s.id)).map((item) => {
             const taken = state.supplements.some(
               (s) => s.supplementId === item.id && s.taken && s.date === today.date,
             );
