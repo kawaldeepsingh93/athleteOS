@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { LAB_DEFS, markerFromInput } from "@/lib/data/labs";
+import { protocolFromLabs } from "@/lib/engines/protocol";
+import { postJson } from "@/lib/runtime";
 import { useAthleteStore } from "@/lib/store";
 import { uid } from "@/lib/utils";
 import type { BloodMarker } from "@/lib/types";
@@ -38,13 +40,11 @@ export default function LabsPage() {
     addBloodReport(report);
     setPending(true);
     try {
-      const res = await fetch("/api/protocol", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reports: [...bloodReports, report], profile }),
+      const data = await postJson<{ protocol?: typeof protocol }>("/api/protocol", {
+        reports: [...bloodReports, report],
+        profile,
       });
-      const data = (await res.json()) as { protocol?: typeof protocol };
-      if (data.protocol) applyProtocol(data.protocol);
+      applyProtocol(data?.protocol ?? protocolFromLabs([...bloodReports, report], profile));
     } finally {
       setPending(false);
     }

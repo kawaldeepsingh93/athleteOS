@@ -5,6 +5,8 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { localCoachReply } from "@/lib/coach";
+import { postJson } from "@/lib/runtime";
 import { useAthleteStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -29,27 +31,22 @@ export default function CoachPage() {
     setPending(true);
     try {
       const snapshot = useAthleteStore.getState();
-      const res = await fetch("/api/coach", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          athlete: {
-            name: snapshot.profile?.name,
-            day: snapshot.currentDay,
-            streak: snapshot.streak,
-            xp: snapshot.xp,
-            diet: snapshot.profile?.dietType,
-            equipment: snapshot.profile?.equipment,
-            protein: snapshot.targets?.proteinG,
-            sleepTime: snapshot.profile?.sleepTime,
-            protocol: snapshot.protocol,
-            labs: snapshot.bloodReports.at(-1)?.markers ?? [],
-          },
-        }),
+      const data = await postJson<{ reply?: string }>("/api/coach", {
+        message,
+        athlete: {
+          name: snapshot.profile?.name,
+          day: snapshot.currentDay,
+          streak: snapshot.streak,
+          xp: snapshot.xp,
+          diet: snapshot.profile?.dietType,
+          equipment: snapshot.profile?.equipment,
+          protein: snapshot.targets?.proteinG,
+          sleepTime: snapshot.profile?.sleepTime,
+          protocol: snapshot.protocol,
+          labs: snapshot.bloodReports.at(-1)?.markers ?? [],
+        },
       });
-      const data = (await res.json()) as { reply?: string };
-      sendCoach("coach", data.reply ?? "Stay with the mission in front of you.");
+      sendCoach("coach", data?.reply ?? localCoachReply(message, snapshot));
     } catch {
       sendCoach("coach", "I am offline, but the mission is not. Finish protein and the next set.");
     } finally {

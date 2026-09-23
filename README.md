@@ -15,6 +15,14 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## GitHub Pages
+
+The static site deploys from `main` via GitHub Actions.
+
+**https://kawaldeepsingh93.github.io/athleteOS/**
+
+Setup: [docs/GITHUB_PAGES.md](docs/GITHUB_PAGES.md). Enable **Settings → Pages → Source: GitHub Actions**, then push `main`.
+
 - **Begin** — generate your own Day 1
 - **Preview Day 27** — live demo athlete (Arjun, streak 12)
 

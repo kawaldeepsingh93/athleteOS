@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { getJson, postJson } from "@/lib/runtime";
 import { useAthleteStore } from "@/lib/store";
 
 export default function SettingsPage() {
@@ -15,15 +16,16 @@ export default function SettingsPage() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    void fetch("/api/migrate")
-      .then((r) => r.json())
-      .then((d: { ready?: boolean; configured?: boolean; error?: string; sql?: string }) => {
-        if (d.sql) setSql(d.sql);
-        if (!d.configured) setDb("Supabase keys missing");
-        else if (d.ready) setDb("Connected · tables ready");
-        else setDb("No tables yet. Paste the SQL into the Supabase SQL editor.");
-      })
-      .catch(() => setDb("Unreachable"));
+    void getJson<{ ready?: boolean; configured?: boolean; error?: string; sql?: string }>("/api/migrate").then((d) => {
+      if (!d) {
+        setDb("Static host · progress saves in this browser.");
+        return;
+      }
+      if (d.sql) setSql(d.sql);
+      if (!d.configured) setDb("Supabase keys missing");
+      else if (d.ready) setDb("Connected · tables ready");
+      else setDb("No tables yet. Paste the SQL into the Supabase SQL editor.");
+    });
   }, []);
 
   function exportData() {
@@ -134,9 +136,8 @@ export default function SettingsPage() {
           <Button
             variant="secondary"
             onClick={async () => {
-              const res = await fetch("/api/migrate", { method: "POST" });
-              const data = (await res.json()) as { ok?: boolean; error?: string; method?: string };
-              setDb(data.ok ? `Migrated · ${data.method}` : data.error ?? "Migration failed");
+              const data = await postJson<{ ok?: boolean; error?: string; method?: string }>("/api/migrate", {});
+              setDb(data?.ok ? `Migrated · ${data.method}` : data?.error ?? "Use the SQL editor on GitHub Pages.");
             }}
           >
             Retry from DATABASE_URL

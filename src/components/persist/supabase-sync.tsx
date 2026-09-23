@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { sendJson } from "@/lib/runtime";
 import { useAthleteStore } from "@/lib/store";
 
 export function SupabaseSync() {
@@ -17,11 +18,7 @@ export function SupabaseSync() {
     timer.current = window.setTimeout(() => {
       const state = useAthleteStore.getState();
       if (!state.onboarded || !state.athleteId) return;
-      void fetch("/api/athlete", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ athleteId: state.athleteId, state }),
-      });
+      void sendJson("/api/athlete", { athleteId: state.athleteId, state }, "PUT");
     }, 1200);
     return () => {
       if (timer.current) window.clearTimeout(timer.current);
